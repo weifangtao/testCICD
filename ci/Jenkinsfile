@@ -1,13 +1,23 @@
 /* Reusable Android application pipeline. */
 
 def withAndroidEnv(Map config, Closure body) {
-    withEnv([
-            "JAVA_HOME=${config.jenkins.javaHome}",
-            "PATH=${config.jenkins.javaHome}/bin:${env.PATH}",
+    def configuredJavaHome = config.jenkins.javaHome?.trim()
+    def javaHomeIsValid = configuredJavaHome && fileExists("${configuredJavaHome}/bin/java")
+    def environment = [
+            "JAVA_HOME=",
             "ANDROID_HOME=${config.jenkins.androidSdk}",
             "ANDROID_SDK_ROOT=${config.jenkins.androidSdk}",
             "GRADLE_USER_HOME=${config.jenkins.gradleUserHome}"
-    ]) {
+    ]
+    if (javaHomeIsValid) {
+        environment += [
+                "JAVA_HOME=${configuredJavaHome}",
+                "PATH=${configuredJavaHome}/bin:${env.PATH}"
+        ]
+    } else {
+        echo "Configured JAVA_HOME is unavailable; using java from Jenkins PATH. configured=${configuredJavaHome ?: '(empty)'}"
+    }
+    withEnv(environment) {
         body()
     }
 }
