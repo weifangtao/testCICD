@@ -2,8 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OLD_PACKAGE="com.itl.k3.wms"
-DEFAULT_GIT_URL="http://git.haoqianyi.com/k3/k3_wms_android.git"
+OLD_PACKAGE="com.example.testcicd"
+OLD_APP_NAME="testCICD"
+TEMPLATE_GIT_URL="https://github.com/weifangtao/testCICD.git"
+DEFAULT_GIT_URL="https://github.com/your-org/your-project.git"
 
 usage() {
   echo "Usage: $0 --name NAME --package PACKAGE [--output DIR] [--git-url URL] [--app-name NAME] [--no-git] [--dry-run]"
@@ -69,12 +71,16 @@ for root in "$target/app/src/main/java" "$target/app/src/main/kotlin" "$target/a
   fi
 done
 
-replace_text "$target/ci/project-config.groovy" "$DEFAULT_GIT_URL" "$git_url"
+while IFS= read -r -d '' file; do
+  replace_text "$file" "$TEMPLATE_GIT_URL" "$git_url"
+done < <(rg -l -0 --hidden -g '!.git/**' -g '!**/.gradle/**' -g '!**/build/**' "$TEMPLATE_GIT_URL" "$target" || true)
 if [[ -n "$app_name" ]]; then
-  while IFS= read -r -d '' file; do
-    replace_text "$file" "灏仟亿" "$app_name"
-  done < <(rg -l -0 --hidden -g '!.git/**' -g '!**/.gradle/**' -g '!**/build/**' "灏仟亿" "$target" || true)
+  replace_text "$target/app/src/main/res/values/strings.xml" "$OLD_APP_NAME" "$app_name"
+  replace_text "$target/README.md" "# $OLD_APP_NAME" "# $app_name"
 fi
+
+# Gradle project name follows the generated directory name, not the optional display name.
+replace_text "$target/settings.gradle.kts" "rootProject.name = \"testCICD\"" "rootProject.name = \"$name\""
 
 if [[ "$init_git" == true ]]; then
   git -C "$target" init >/dev/null
@@ -82,4 +88,4 @@ if [[ "$init_git" == true ]]; then
 fi
 
 echo "[init-project] initialized: $target"
-echo "[init-project] verify: cd $target && ./gradlew :app:assembleK3HaoqianyiTestDebug"
+echo "[init-project] verify: cd $target && ./gradlew :app:assembleDebug"

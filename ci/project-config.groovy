@@ -3,7 +3,8 @@
 return [
     git: [
         url          : 'https://github.com/weifangtao/testCICD.git',
-        credentials  : 'github-testcicd',
+        // 仓库为 Public 时留空即可；私有仓库再填写 Jenkins Credentials ID。
+        credentials  : '',
         defaultBranch: 'origin/main'
     ],
     jenkins: [
@@ -16,12 +17,14 @@ return [
         defaultProfile: 'test',
         profiles      : [
             test: [
-                task   : 'assembleDebug',
+                checkTask: 'compileDebugKotlin',
+                packageTask: 'assembleDebug',
                 variant: 'debug',
                 aliases: ['debug']
             ],
             release: [
-                task   : 'assembleRelease',
+                checkTask: 'compileReleaseKotlin',
+                packageTask: 'assembleRelease',
                 variant: 'release',
                 aliases: []
             ]

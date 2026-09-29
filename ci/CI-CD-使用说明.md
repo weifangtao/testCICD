@@ -11,15 +11,15 @@ ci/init-android-project.sh
 
 ## Jenkins 编译检查和发布
 
-统一使用 Job：`k3_wms_android`
+统一使用一个 Jenkins Pipeline Job（例如：`testCICD`）。
 
-自动构建每 5 分钟执行一次，默认构建 `test` 分支的测试包：
+自动构建每 5 分钟执行一次，默认检查 `main` 分支：
 
-- 执行内容：`assembleK3HaoqianyiTestDebug`
+- 执行内容：`compileDebugKotlin`
 - 默认不上传蒲公英
 - 默认不发送飞书
 
-手动构建时仍可选择发布分支和环境，并打开蒲公英、飞书选项。
+手动构建时仍可选择发布分支和环境，并按需打开蒲公英、飞书选项。
 
 构建时可以选择：
 
@@ -53,13 +53,13 @@ gradle: [
     module: ':app',
     defaultProfile: 'test',
     profiles: [
-        test: [task: 'assembleDebug', variant: 'debug', aliases: []],
-        release: [task: 'assembleRelease', variant: 'release', aliases: []]
+        test: [checkTask: 'compileDebugKotlin', packageTask: 'assembleDebug', variant: 'debug', aliases: []],
+        release: [checkTask: 'compileReleaseKotlin', packageTask: 'assembleRelease', variant: 'release', aliases: []]
     ]
 ]
 ```
 
-## 一键初始化 WMS 模板项目
+## 一键初始化 Android 模板项目
 
 在当前项目根目录执行：
 

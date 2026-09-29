@@ -32,6 +32,12 @@ def selectedBuildProfile(Map config, String requested) {
 pipeline {
     agent any
 
+    // Jenkins 创建 Pipeline Job 后即可自动轮询仓库，无需再为每个项目重复填写触发器。
+    // SCM 触发只执行 compile* 检查；手动点击构建才执行 assemble* 以及可选发布。
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
     options {
         skipDefaultCheckout(true)
         timestamps()
@@ -47,7 +53,7 @@ pipeline {
         gitParameter(
                 name: 'BRANCH',
                 type: 'PT_BRANCH',
-                defaultValue: 'origin/test',
+                defaultValue: 'origin/main',
                 branchFilter: 'origin/(.*)',
                 selectedValue: 'DEFAULT',
                 sortMode: 'DESCENDING_SMART',
@@ -63,16 +69,17 @@ pipeline {
                     // SCM. The second checkout honors the selected build branch.
                     checkout scm
                     appConfig = load 'ci/project-config.groovy'
-                    def selectedBranch = params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/test')
+                    def selectedBranch = params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/main')
                     def branchName = selectedBranch.replaceFirst('^origin/', '')
                     deleteDir()
+                    def remote = [url: appConfig.git.url]
+                    if (appConfig.git.credentials?.trim()) {
+                        remote.credentialsId = appConfig.git.credentials
+                    }
                     checkout([
                             $class: 'GitSCM',
                             branches: [[name: "*/${branchName}"]],
-                            userRemoteConfigs: [[
-                                    url: appConfig.git.url,
-                                    credentialsId: appConfig.git.credentials
-                            ]]
+                            userRemoteConfigs: [remote]
                     ])
                 }
             }
@@ -100,10 +107,13 @@ pipeline {
                     if (!buildProfile) {
                         error "Unknown BUILD_ENV '${params.BUILD_ENV}'. Available profiles: ${(appConfig.gradle.profiles ?: [:]).keySet().join(', ')}"
                     }
-                    def gradleTask = buildProfile.values.task
+                    def isScmCheck = currentBuild.getBuildCauses('hudson.triggers.SCMTrigger$SCMTriggerCause').size() > 0
+                    def gradleTask = isScmCheck ? buildProfile.values.checkTask : buildProfile.values.packageTask
                     if (!gradleTask) {
-                        error "No Gradle task configured for BUILD_ENV '${buildProfile.name}'"
+                        error "No ${isScmCheck ? 'checkTask' : 'packageTask'} configured for BUILD_ENV '${buildProfile.name}'"
                     }
+                    env.CI_CHECK_ONLY = isScmCheck ? 'true' : 'false'
+                    echo "Build mode: ${isScmCheck ? 'automatic compile check' : 'manual package'}"
                     withAndroidEnv(appConfig) {
                         sh "./gradlew ${appConfig.gradle.module}:${gradleTask} --build-cache --parallel --stacktrace"
                     }
@@ -118,6 +128,10 @@ pipeline {
         }
         success {
             script {
+                if (env.CI_CHECK_ONLY == 'true') {
+                    echo 'Automatic SCM compile check succeeded. Packaging and notifications skipped.'
+                    return
+                }
                 def buildProfile = selectedBuildProfile(appConfig, params.BUILD_ENV)
                 if (!buildProfile) {
                     error "Unknown BUILD_ENV '${params.BUILD_ENV}'. Available profiles: ${(appConfig.gradle.profiles ?: [:]).keySet().join(', ')}"
@@ -168,7 +182,7 @@ PY""").trim()
                 }
 
                 if (params.SEND_FEISHU_NOTICE) {
-                    def selectedBranch = (params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/test')).replaceFirst('^origin/', '')
+                    def selectedBranch = (params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/main')).replaceFirst('^origin/', '')
                     def commitLog = sh(returnStdout: true, script: "git log -10 --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:'%ad %s (%an)'").trim()
                     def lines = ['Android APK 打包完成', "Project: ${env.JOB_NAME}", "Build No.: #${env.BUILD_NUMBER}", "Branch: ${selectedBranch}", "Environment: ${params.BUILD_ENV}", "Version: ${appVersion ?: 'unknown'}", "APK: ${pgyerUrl ?: artifactUrl}"]
                     if (commitLog) {

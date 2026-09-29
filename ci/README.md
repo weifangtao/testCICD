@@ -7,7 +7,7 @@
 
 1. 复制 `ci/Jenkinsfile` 和 `ci/project-config.groovy`。
 2. 修改 `project-config.groovy` 中的 Git 地址、Jenkins 工具路径、构建 profile、APK 路径和蒲公英配置。
-3. 在 Jenkins 创建 Pipeline Job，选择 **Pipeline script from SCM**，配置默认分支和脚本路径 `ci/Jenkinsfile`。
+3. 在 Jenkins 创建一个 Pipeline Job，选择 **Pipeline script from SCM**，配置默认分支和脚本路径 `ci/Jenkinsfile`。模板会自动启用每 5 分钟 SCM 轮询。
 4. 保留 `BRANCH` Git 参数（模板也会声明该参数）；模板会按该参数重新 checkout 实际构建分支。
 5. 配置 Git、蒲公英 API Key、蒲公英安装密码和飞书 Webhook Credentials。
 
@@ -26,7 +26,7 @@
 ```groovy
 git: [
     url: 'http://git.example.com/mobile/testCICD.git',
-    credentials: 'git-credential-id',
+    credentials: '',
     defaultBranch: 'origin/main'
 ],
 gradle: [
@@ -34,12 +34,14 @@ gradle: [
     defaultProfile: 'test',
     profiles: [
         test: [
-            task: 'assembleDebug',
+            checkTask: 'compileDebugKotlin',
+            packageTask: 'assembleDebug',
             variant: 'debug',
             aliases: []
         ],
         release: [
-            task: 'assembleRelease',
+            checkTask: 'compileReleaseKotlin',
+            packageTask: 'assembleRelease',
             variant: 'release',
             aliases: []
         ]
@@ -47,24 +49,24 @@ gradle: [
 ]
 ```
 
-## 当前 Jenkins 接入参数
+## Jenkins 接入参数
 
 现有构建平台：`http://wms-appbuild.bestfulfill-inc.com:8080/`。
-现有 Job：`k3_wms_android`。
+建议新建 Job：`testCICD`（也可以使用已有 Job 名称）。
 
-该 Job 每 5 分钟执行一次 `test` 分支的编译检查，默认关闭蒲公英上传和飞书通知；手动构建时仍可选择分支、环境并开启发布选项。
-代码仓库：`http://git.haoqianyi.com/k3/k3_wms_android.git`。
+该 Job 每 5 分钟执行一次默认分支的编译检查，默认关闭蒲公英上传和飞书通知；手动构建时仍可选择分支、环境并开启发布选项。自动轮询触发时只执行 `compile*`，不会打包、上传蒲公英或发送飞书。
+代码仓库：`https://github.com/weifangtao/testCICD.git`。
 
-将现有 Job 切换为模板时，在 Jenkins 的 Pipeline 区域选择 **Pipeline script from SCM**：
+在 Jenkins 的 Pipeline 区域选择 **Pipeline script from SCM**：
 
 - SCM：Git
 - Repository URL：上述代码仓库
-- Credentials：`k3-wms-git`
+- Credentials：Public 仓库可留空
 - Script Path：`ci/Jenkinsfile`
-- Script 所在分支：先填包含模板的分支
+- Script 所在分支：`main`
 
-构建时仍使用现有的 `BRANCH` 参数选择真正打包的代码分支；模板会按 `BRANCH` 再次 checkout。
-蒲公英和飞书继续复用现有 Credentials：`pgyer-api-key-test`、`pgyer-api-key-release`、`pgyer-build-password`、`feishu-webhook`。
+构建时使用 `BRANCH` 参数选择真正构建的代码分支；模板会按 `BRANCH` 再次 checkout。
+如果需要发布，才配置蒲公英和飞书 Credentials；仅做自动编译检查时不需要这些凭据。
 
 ## 一键初始化新项目
 
@@ -87,7 +89,7 @@ gradle: [
 
 ```bash
 cd StockWms
-./gradlew :app:assembleK3HaoqianyiTestDebug
+./gradlew :app:assembleDebug
 ```
 
 验收口径：从执行初始化命令到项目首次编译成功，目标控制在 4 个有效工时以内。
