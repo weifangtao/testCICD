@@ -13,6 +13,10 @@ ci/init-android-project.sh
 
 统一使用一个 Jenkins Pipeline Job（例如：`testCICD`）。
 
+“一键”只统一流水线流程，不会替每个项目创建 Git/Jenkins 账号，也不会自动生成蒲公英
+API Key 或飞书 Webhook。每个项目需要在 `ci/project-config.groovy` 填写自己的仓库、
+分支、Java/Android SDK 路径和 Gradle 任务；密钥统一放在 Jenkins Credentials。
+
 自动构建每 5 分钟执行一次，默认检查 `main` 分支：
 
 - 执行内容：`compileDebugKotlin`
@@ -33,7 +37,14 @@ ci/init-android-project.sh
 `test` / `release`，新建的普通 Android 项目可以配置为同样的名称，并分别映射到
 `assembleDebug` / `assembleRelease`。
 
+`testCICD` 使用 JDK 17。Jenkins 节点必须先安装 JDK 17，并在
+`ci/project-config.groovy` 的 `jenkins.javaHome` 填写节点上的实际路径。
+
 发布流水线使用 `ci/Jenkinsfile`，项目差异配置放在 `ci/project-config.groovy`，密钥统一放在 Jenkins Credentials。
+
+Jenkins Credentials 位置：**系统管理 → Credentials → System → Global credentials → Add Credentials**。
+创建后把 Credential 的 ID 填入 `git.credentials`、`pgyerApiCredential`、
+`pgyer.passwordCredential` 或 `feishu.webhookCredential`。自动编译检查不需要蒲公英和飞书密钥。
 
 ## 接入已有 Android 项目
 

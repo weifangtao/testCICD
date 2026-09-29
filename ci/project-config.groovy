@@ -8,7 +8,7 @@ return [
         defaultBranch: 'origin/main'
     ],
     jenkins: [
-        javaHome      : '/usr/lib/jvm/java-21-openjdk-amd64',
+        javaHome      : '/usr/lib/jvm/java-17-openjdk-amd64',
         androidSdk    : '/var/lib/jenkins/android-sdk',
         gradleUserHome: '/var/lib/jenkins/.gradle'
     ],

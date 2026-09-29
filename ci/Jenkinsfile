@@ -32,8 +32,7 @@ def selectedBuildProfile(Map config, String requested) {
 pipeline {
     agent any
 
-    // Jenkins 创建 Pipeline Job 后即可自动轮询仓库，无需再为每个项目重复填写触发器。
-    // SCM 触发只执行 compile* 检查；手动点击构建才执行 assemble* 以及可选发布。
+    // SCM 轮询由流水线统一声明；自动触发只做编译检查，手动构建才打包/发布。
     triggers {
         pollSCM('H/5 * * * *')
     }
