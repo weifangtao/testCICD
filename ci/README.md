@@ -25,9 +25,10 @@ Jenkins Credentials 位置：**系统管理 → Credentials → System → Globa
 `git.defaultBranch` 用于没有选择 `BRANCH` 时的默认分支；新项目可以设置为
 `origin/master` 或 `origin/main`。
 
-本模板当前使用 JDK 17（`/usr/lib/jvm/java-17-openjdk-amd64`）。如果 Jenkins 节点没有
-该目录，需要先在 Jenkins 节点安装 JDK 17，再填写实际 `JAVA_HOME`；不能把 JDK 21
-或 JDK 8 路径冒充 JDK 17。
+当前 Jenkins 节点只有可用的 JDK 21，因此模板暂时使用
+`/usr/lib/jvm/java-21-openjdk-amd64`。如果需要固定使用 JDK 17，必须先在 Jenkins
+节点安装 JDK 17，再将 `ci/project-config.groovy` 中的 `jenkins.javaHome` 改成真实
+的 JDK 17 `JAVA_HOME`；不能填写不存在的目录。
 
 模板不包含任何密码、API Key Secret 或 Webhook URL。每个项目可以定义自己的
 `gradle.profiles`，例如普通 Android 项目可以配置 `assembleDebug` 和

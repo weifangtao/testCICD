@@ -37,8 +37,9 @@ API Key 或飞书 Webhook。每个项目需要在 `ci/project-config.groovy` 填
 `test` / `release`，新建的普通 Android 项目可以配置为同样的名称，并分别映射到
 `assembleDebug` / `assembleRelease`。
 
-`testCICD` 使用 JDK 17。Jenkins 节点必须先安装 JDK 17，并在
-`ci/project-config.groovy` 的 `jenkins.javaHome` 填写节点上的实际路径。
+当前 Jenkins 节点使用 JDK 21，路径由
+`ci/project-config.groovy` 的 `jenkins.javaHome` 指定。若项目要求 JDK 17，需先在
+Jenkins 节点安装 JDK 17，再把该配置改为节点上的真实路径，不能填写不存在的目录。
 
 发布流水线使用 `ci/Jenkinsfile`，项目差异配置放在 `ci/project-config.groovy`，密钥统一放在 Jenkins Credentials。
 

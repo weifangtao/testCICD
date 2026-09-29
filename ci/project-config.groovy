@@ -8,7 +8,9 @@ return [
         defaultBranch: 'origin/main'
     ],
     jenkins: [
-        javaHome      : '/usr/lib/jvm/java-17-openjdk-amd64',
+        // 当前 Jenkins 构建节点实际可用的 JDK 路径。
+        // 节点安装 JDK 17 后，将此值替换为真实的 JDK 17 JAVA_HOME。
+        javaHome      : '/usr/lib/jvm/java-21-openjdk-amd64',
         androidSdk    : '/var/lib/jenkins/android-sdk',
         gradleUserHome: '/var/lib/jenkins/.gradle'
     ],
