@@ -1,0 +1,202 @@
+/* Reusable Android application pipeline. */
+
+def withAndroidEnv(Map config, Closure body) {
+    withEnv([
+            "JAVA_HOME=${config.jenkins.javaHome}",
+            "PATH=${config.jenkins.javaHome}/bin:${env.PATH}",
+            "ANDROID_HOME=${config.jenkins.androidSdk}",
+            "ANDROID_SDK_ROOT=${config.jenkins.androidSdk}",
+            "GRADLE_USER_HOME=${config.jenkins.gradleUserHome}"
+    ]) {
+        body()
+    }
+}
+
+def appConfig
+
+def selectedBuildProfile(Map config, String requested) {
+    def profiles = config.gradle.profiles ?: [:]
+    def value = requested ?: config.gradle.defaultProfile ?: 'test'
+    if (profiles[value]) {
+        return [name: value, values: profiles[value]]
+    }
+    def match = profiles.find { key, profile ->
+        (profile.aliases ?: []).contains(value)
+    }
+    if (match) {
+        return [name: match.key, values: match.value]
+    }
+    return null
+}
+
+pipeline {
+    agent any
+
+    options {
+        skipDefaultCheckout(true)
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '50', artifactNumToKeepStr: '50'))
+    }
+
+    parameters {
+        string(name: 'BUILD_ENV', defaultValue: 'test', description: '构建 profile 名称；可用值由 ci/project-config.groovy 的 gradle.profiles 配置')
+        booleanParam(name: 'UPLOAD_PGYER', defaultValue: false, description: '是否上传蒲公英')
+        string(name: 'UPDATE_DESCRIPTION', defaultValue: '', description: '蒲公英更新说明')
+        booleanParam(name: 'SEND_FEISHU_NOTICE', defaultValue: false, description: '构建成功后发送飞书群通知')
+        gitParameter(
+                name: 'BRANCH',
+                type: 'PT_BRANCH',
+                defaultValue: 'origin/test',
+                branchFilter: 'origin/(.*)',
+                selectedValue: 'DEFAULT',
+                sortMode: 'DESCENDING_SMART',
+                description: '请选择打包分支'
+        )
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script {
+                    // First checkout loads the project config from the Pipeline
+                    // SCM. The second checkout honors the selected build branch.
+                    checkout scm
+                    appConfig = load 'ci/project-config.groovy'
+                    def selectedBranch = params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/test')
+                    def branchName = selectedBranch.replaceFirst('^origin/', '')
+                    deleteDir()
+                    checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "*/${branchName}"]],
+                            userRemoteConfigs: [[
+                                    url: appConfig.git.url,
+                                    credentialsId: appConfig.git.credentials
+                            ]]
+                    ])
+                }
+            }
+        }
+
+        stage('Prepare') {
+            steps {
+                script {
+                    withAndroidEnv(appConfig) {
+                        sh '''
+                            set -e
+                            chmod +x ./gradlew
+                            java -version
+                            ./gradlew --version
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    def buildProfile = selectedBuildProfile(appConfig, params.BUILD_ENV)
+                    if (!buildProfile) {
+                        error "Unknown BUILD_ENV '${params.BUILD_ENV}'. Available profiles: ${(appConfig.gradle.profiles ?: [:]).keySet().join(', ')}"
+                    }
+                    def gradleTask = buildProfile.values.task
+                    if (!gradleTask) {
+                        error "No Gradle task configured for BUILD_ENV '${buildProfile.name}'"
+                    }
+                    withAndroidEnv(appConfig) {
+                        sh "./gradlew ${appConfig.gradle.module}:${gradleTask} --build-cache --parallel --stacktrace"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: '**/build/outputs/apk/**/*.apk', allowEmptyArchive: true, fingerprint: true
+        }
+        success {
+            script {
+                def buildProfile = selectedBuildProfile(appConfig, params.BUILD_ENV)
+                if (!buildProfile) {
+                    error "Unknown BUILD_ENV '${params.BUILD_ENV}'. Available profiles: ${(appConfig.gradle.profiles ?: [:]).keySet().join(', ')}"
+                }
+                def profile = buildProfile.values
+                def apkSearchDir = profile.apkSearchDir ?: "app/build/outputs/apk/${profile.variant ?: buildProfile.name}"
+                def apkPath = sh(returnStdout: true, script: "find '${apkSearchDir}' -maxdepth 2 -type f -name '*.apk' | sort | tail -n 1").trim()
+                if (!apkPath) {
+                    error "APK not found for BUILD_ENV '${params.BUILD_ENV}' under ${apkSearchDir}"
+                }
+                def artifactUrl = "${env.BUILD_URL}artifact/${apkPath}"
+                def pgyerAppKey = profile.pgyerAppKey ?: ''
+                def pgyerUrl = ''
+                def appVersion = apkPath.replaceFirst(/^.*-v/, '').replaceFirst(/\.apk$/, '')
+
+                if (params.UPLOAD_PGYER) {
+                    def pgyerCredential = profile.pgyerApiCredential ?: ''
+                    if (!pgyerAppKey || !pgyerCredential || !appConfig.pgyer?.passwordCredential) {
+                        error "Pgyer credentials are not configured for BUILD_ENV '${buildProfile.name}'"
+                    }
+                    withCredentials([
+                            string(credentialsId: pgyerCredential, variable: 'PGYER_API_KEY'),
+                            string(credentialsId: appConfig.pgyer.passwordCredential, variable: 'PGYER_BUILD_PASSWORD')
+                    ]) {
+                        withEnv(["PGYER_APK_PATH=${apkPath}", "PGYER_APP_KEY=${pgyerAppKey}", "PGYER_UPDATE_DESCRIPTION=${params.UPDATE_DESCRIPTION ?: ''}"]) {
+                            sh '''
+                                set -e
+                                curl -fsS -X POST https://www.pgyer.com/apiv2/app/upload \
+                                  -F "_api_key=$PGYER_API_KEY" -F "appKey=$PGYER_APP_KEY" \
+                                  -F "file=@$PGYER_APK_PATH" -F "buildPassword=$PGYER_BUILD_PASSWORD" \
+                                  -F "buildUpdateDescription=$PGYER_UPDATE_DESCRIPTION" -o pgyer-response.json
+                                cat pgyer-response.json
+                                grep -q '"code":0' pgyer-response.json
+                            '''
+                        }
+                    }
+                    def uploadedUrl = sh(returnStdout: true, script: """python3 - <<'PY'
+import json
+with open('pgyer-response.json', encoding='utf-8') as f:
+    data = json.load(f)
+value = data.get('data', {}).get('buildShortcutUrl', '')
+print(value or '')
+PY""").trim()
+                    pgyerUrl = uploadedUrl ? (uploadedUrl.startsWith('http') ? uploadedUrl : "https://www.pgyer.com/${uploadedUrl}") : ''
+                    echo 'Pgyer upload succeeded.'
+                } else {
+                    echo 'Pgyer upload skipped.'
+                }
+
+                if (params.SEND_FEISHU_NOTICE) {
+                    def selectedBranch = (params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/test')).replaceFirst('^origin/', '')
+                    def commitLog = sh(returnStdout: true, script: "git log -10 --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:'%ad %s (%an)'").trim()
+                    def lines = ['Android APK 打包完成', "Project: ${env.JOB_NAME}", "Build No.: #${env.BUILD_NUMBER}", "Branch: ${selectedBranch}", "Environment: ${params.BUILD_ENV}", "Version: ${appVersion ?: 'unknown'}", "APK: ${pgyerUrl ?: artifactUrl}"]
+                    if (commitLog) {
+                        lines += ['', 'Commit Records:']
+                        lines.addAll(commitLog.readLines())
+                    }
+                    writeFile file: 'feishu-message.txt', text: lines.join('\n')
+                    withCredentials([string(credentialsId: appConfig.feishu.webhookCredential, variable: 'FEISHU_WEBHOOK')]) {
+                        sh '''
+                            set -e
+                            python3 - <<'PY'
+import json, os, urllib.request
+from pathlib import Path
+payload = json.dumps({'msg_type': 'text', 'content': {'text': Path('feishu-message.txt').read_text(encoding='utf-8')}}).encode()
+req = urllib.request.Request(os.environ['FEISHU_WEBHOOK'], data=payload, headers={'Content-Type': 'application/json'})
+print(urllib.request.urlopen(req, timeout=20).read().decode())
+PY
+                        '''
+                    }
+                    echo 'Feishu notification sent.'
+                } else {
+                    echo 'Feishu notification skipped.'
+                }
+            }
+            echo 'Android package build succeeded.'
+        }
+        failure {
+            echo 'Android package build failed. Check console log for details.'
+        }
+    }
+}
