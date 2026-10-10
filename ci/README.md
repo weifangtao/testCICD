@@ -3,12 +3,12 @@
 `Jenkinsfile` 负责通用流程，`project-config.groovy` 负责项目差异，密钥统一放在
 Jenkins Credentials。接入新项目只需复制 `ci/`、填写配置、创建一个 Pipeline Job。
 
-项目定位：`k3_wms_android` 是实际主项目，`testCICD` 是一键 CI/CD Demo。
+项目定位：`k3_wms_android` 是实际主项目，`testDemo` 是一键 CI/CD Demo。
 
 Demo 地址：
 
-- GitHub：https://github.com/weifangtao/testCICD
-- Jenkins：http://wms-appbuild.bestfulfill-inc.com:8080/job/testCICD/
+- GitHub：https://github.com/weifangtao/testDemo
+- Jenkins：http://wms-appbuild.bestfulfill-inc.com:8080/job/testDemo/
 
 快速步骤：
 

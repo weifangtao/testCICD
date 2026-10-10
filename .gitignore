@@ -15,3 +15,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 签名与密钥（绝不入库）
+keystore.properties
+*.jks
+*.keystore
+.kotlin/
+**/.kotlin/
+**/metadata/
+*.klib
+

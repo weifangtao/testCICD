@@ -22,5 +22,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "testCICD"
+rootProject.name = "testDemo"
 include(":app")
+include(":lib:core")
+include(":lib:shared")

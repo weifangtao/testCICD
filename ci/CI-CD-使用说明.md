@@ -13,12 +13,12 @@
 
 - 主项目：`k3_wms_android`，用于实际 WMS 业务开发和发布，保留 WMS 自己的分支、
   JDK 8、flavor、Gradle 任务、蒲公英 App Key 和飞书凭据。
-- 一键 CI/CD Demo：`testCICD`，用于演示通用 `ci/` 模板、自动编译检查、手动打包和
+- 一键 CI/CD Demo：`testDemo`，用于演示通用 `ci/` 模板、自动编译检查、手动打包和
   新项目初始化流程，不承载 WMS 的业务配置。
 
-Demo 代码仓库：`https://github.com/weifangtao/testCICD`
+Demo 代码仓库：`https://github.com/weifangtao/testDemo`
 
-Demo Jenkins Job：`http://wms-appbuild.bestfulfill-inc.com:8080/job/testCICD/`
+Demo Jenkins Job：`http://wms-appbuild.bestfulfill-inc.com:8080/job/testDemo/`
 
 主项目 Jenkins Job：`http://wms-appbuild.bestfulfill-inc.com:8080/job/k3_wms_android/`
 

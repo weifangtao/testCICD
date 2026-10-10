@@ -24,6 +24,46 @@ def withAndroidEnv(Map config, Closure body) {
 
 def appConfig
 
+/**
+ * 计算版本号。
+ * 优先级：构建参数 > project-config.version 配置 + BUILD_NUMBER
+ */
+def computeVersion(Map config) {
+    def versionConfig = config.version ?: [:]
+    def baseName = versionConfig.baseName ?: '1.0.0'
+    def startCode = (versionConfig.startCode ?: 1) as int
+    def buildNo = (env.BUILD_NUMBER ?: '1') as int
+
+    def name = params.VERSION_NAME?.trim() ?: "${baseName}.${buildNo}"
+    def code = params.VERSION_CODE?.trim() ?: "${startCode + buildNo}"
+    return [name: name, code: code]
+}
+
+/**
+ * 注入签名凭据（全部来自 Jenkins Credentials，密钥不落库）。
+ * 正式发布 profile 必须配置签名；非发布 profile 可以不签名。
+ */
+def withSigningCredentials(Map config, boolean required, Closure body) {
+    def signing = config.signing ?: [:]
+    def credentialIds = [signing.keystoreFile, signing.storePassword, signing.keyAlias, signing.keyPassword]
+    if (required && credentialIds.any { !it?.trim() }) {
+        error 'Release signing credentials are incomplete; refusing to build a publishable artifact.'
+    }
+    if (!signing.keystoreFile?.trim()) {
+        echo 'Signing credentials not configured; non-release output will be unsigned.'
+        return body()
+    }
+    echo 'Using signing credentials from Jenkins.'
+    withCredentials([
+            file(credentialsId: signing.keystoreFile, variable: 'RELEASE_STORE_FILE'),
+            string(credentialsId: signing.storePassword, variable: 'RELEASE_STORE_PASSWORD'),
+            string(credentialsId: signing.keyAlias, variable: 'RELEASE_KEY_ALIAS'),
+            string(credentialsId: signing.keyPassword, variable: 'RELEASE_KEY_PASSWORD')
+    ]) {
+        body()
+    }
+}
+
 def selectedBuildProfile(Map config, String requested) {
     def profiles = config.gradle.profiles ?: [:]
     def value = requested ?: config.gradle.defaultProfile ?: 'test'
@@ -97,6 +137,10 @@ pipeline {
         stage('Prepare') {
             steps {
                 script {
+                    def version = computeVersion(appConfig)
+                    env.VERSION_NAME = version.name
+                    env.VERSION_CODE = version.code
+                    echo "Version: ${version.name} (code ${version.code})"
                     withAndroidEnv(appConfig) {
                         sh '''
                             set -e
@@ -117,14 +161,25 @@ pipeline {
                         error "Unknown BUILD_ENV '${params.BUILD_ENV}'. Available profiles: ${(appConfig.gradle.profiles ?: [:]).keySet().join(', ')}"
                     }
                     def isScmCheck = currentBuild.getBuildCauses('hudson.triggers.SCMTrigger$SCMTriggerCause').size() > 0
-                    def gradleTask = isScmCheck ? buildProfile.values.checkTask : buildProfile.values.packageTask
-                    if (!gradleTask) {
-                        error "No ${isScmCheck ? 'checkTask' : 'packageTask'} configured for BUILD_ENV '${buildProfile.name}'"
+                    def qualityTask = buildProfile.values.qualityTask
+                    def packageTask = buildProfile.values.packageTask
+                    if (!qualityTask || !packageTask) {
+                        error "Quality/package tasks are not configured for BUILD_ENV '${buildProfile.name}'"
                     }
+                    // PR/SCM 和手动打包都必须先通过 test + lint；正式包再追加 assemble。
+                    def gradleTasks = isScmCheck ? qualityTask : "${qualityTask} ${packageTask}"
                     env.CI_CHECK_ONLY = isScmCheck ? 'true' : 'false'
-                    echo "Build mode: ${isScmCheck ? 'automatic compile check' : 'manual package'}"
+                    echo "Build mode: ${isScmCheck ? 'automatic quality check' : 'manual quality check + package'}"
+                    def version = [name: env.VERSION_NAME, code: env.VERSION_CODE]
+                    def requireSigning = !isScmCheck && (buildProfile.values.requireSigning ?: false)
                     withAndroidEnv(appConfig) {
-                        sh "./gradlew ${appConfig.gradle.module}:${gradleTask} --build-cache --parallel --stacktrace"
+                        withSigningCredentials(appConfig, requireSigning) {
+                            withEnv(["REQUIRE_RELEASE_SIGNING=${requireSigning}"]) {
+                                sh "./gradlew ${gradleTasks} " +
+                                   "-PVERSION_NAME=${version.name} -PVERSION_CODE=${version.code} " +
+                                   "--build-cache --parallel --stacktrace"
+                            }
+                        }
                     }
                 }
             }
@@ -133,7 +188,8 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: '**/build/outputs/apk/**/*.apk', allowEmptyArchive: true, fingerprint: true
+            archiveArtifacts artifacts: '**/build/outputs/apk/**/*.apk,**/build/outputs/mapping/**/*.txt,**/build/outputs/**/output-metadata.json', allowEmptyArchive: true, fingerprint: true
+            junit allowEmptyResults: true, testResults: '**/build/test-results/**/*.xml'
         }
         success {
             script {
@@ -147,10 +203,11 @@ pipeline {
                 }
                 def profile = buildProfile.values
                 def apkSearchDir = profile.apkSearchDir ?: "app/build/outputs/apk/${profile.variant ?: buildProfile.name}"
-                def apkPath = sh(returnStdout: true, script: "find '${apkSearchDir}' -maxdepth 2 -type f -name '*.apk' | sort | tail -n 1").trim()
+                def apkPath = sh(returnStdout: true, script: "find '${apkSearchDir}' -maxdepth 2 -type f -name '*.apk' ! -name '*-unsigned.apk' | sort | tail -n 1").trim()
                 if (!apkPath) {
-                    error "APK not found for BUILD_ENV '${params.BUILD_ENV}' under ${apkSearchDir}"
+                    error "Signed APK not found for BUILD_ENV '${params.BUILD_ENV}' under ${apkSearchDir}"
                 }
+                sh "apksigner verify --verbose '${apkPath}'"
                 def artifactUrl = "${env.BUILD_URL}artifact/${apkPath}"
                 def pgyerAppKey = profile.pgyerAppKey ?: ''
                 def pgyerUrl = ''
