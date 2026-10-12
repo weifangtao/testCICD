@@ -96,4 +96,29 @@ class WmsGatewayTest {
         val gateway = WmsGateway(sessions) { error("must not create client") }
         assertTrue(gateway.request<String, LoginUser>("Example", "input") is ApiResult.Failure)
     }
+
+    @Test fun `401 error automatically triggers token refresh and retries request`() = runTest {
+        sessions.restore()
+        sessions.accept(sessions.state.value.generation, Session("test", LoginUser("old-token", "alice")))
+
+        var requestCount = 0
+        val gateway = WmsGateway(
+            sessions = sessions,
+            refreshTokenProvider = { session -> ApiResult.Success("refreshed-token") }
+        ) { config -> NetworkClient(config, MockEngine { request ->
+            requestCount++
+            if (requestCount == 1) {
+                assertEquals("old-token", request.headers["SESSION_MOBILE_USER_TOKEN"])
+                respond("""{"result":false,"message":"请重新登录"}""", status = HttpStatusCode.Unauthorized, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            } else {
+                assertEquals("refreshed-token", request.headers["SESSION_MOBILE_USER_TOKEN"])
+                respond("""{"result":true,"data":"success-data"}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }) }
+
+        val result = gateway.request<String, String>("Example", "input")
+        assertTrue(result is ApiResult.Success)
+        assertEquals("success-data", (result as ApiResult.Success).data)
+        assertEquals("refreshed-token", sessions.state.value.session?.user?.token)
+    }
 }

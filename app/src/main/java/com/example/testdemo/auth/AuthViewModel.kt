@@ -5,6 +5,8 @@ import com.example.testdemo.BuildConfig
 import com.example.testdemo.lib.base.mvi.*
 import com.example.testdemo.lib.config.AppEnvironment
 import com.example.testdemo.lib.net.ApiResult
+import com.example.testdemo.domain.usecase.LoginParams
+import com.example.testdemo.domain.usecase.LoginUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -23,7 +25,7 @@ sealed interface LoginEvent : MviSingleEvent
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val repository: AuthRepository,
+    private val loginUseCase: LoginUseCase,
     private val sessions: SessionManager,
 ) : AbstractMviViewModel<LoginIntent, LoginUiState, LoginEvent>() {
     private val mutableState = MutableStateFlow(LoginUiState())
@@ -38,7 +40,7 @@ class AuthViewModel @Inject constructor(
                 launch {
                     try {
                         when (intent) {
-                            is LoginIntent.Submit -> when (val result = repository.login(intent.account, intent.password)) {
+                            is LoginIntent.Submit -> when (val result = loginUseCase(LoginParams(intent.account, intent.password))) {
                                 is ApiResult.Failure -> mutableState.value = LoginUiState(message = result.error.message)
                                 else -> mutableState.value = LoginUiState()
                             }

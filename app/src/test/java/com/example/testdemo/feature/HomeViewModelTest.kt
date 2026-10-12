@@ -2,6 +2,8 @@ package com.example.testdemo.feature
 
 import com.example.testdemo.data.PostRepository
 import com.example.testdemo.data.remote.PostDto
+import com.example.testdemo.domain.usecase.GetPostsUseCase
+import com.example.testdemo.domain.usecase.RefreshPostsUseCase
 import com.example.testdemo.feature.home.HomeEvent
 import com.example.testdemo.feature.home.HomeIntent
 import com.example.testdemo.feature.home.HomeState
@@ -45,7 +47,7 @@ class HomeViewModelTest :
         coEvery { repository.refresh() } returnsWithDelay ApiResult.Success(Unit)
 
         runVMTest(
-            vmProducer = { HomeViewModel(repository) },
+            vmProducer = { HomeViewModel(GetPostsUseCase(repository), RefreshPostsUseCase(repository)) },
             intents = flowOf(HomeIntent.Load),
             expectedStates = listOf(
                 expectThat { assertEquals("① 数据库首帧", POSTS, it.posts) },
@@ -65,7 +67,7 @@ class HomeViewModelTest :
         coEvery { repository.refresh() } returnsWithDelay ApiResult.Failure(ApiError.connect())
 
         runVMTest(
-            vmProducer = { HomeViewModel(repository) },
+            vmProducer = { HomeViewModel(GetPostsUseCase(repository), RefreshPostsUseCase(repository)) },
             intents = flowOf(HomeIntent.Load),
             expectedStates = listOf(
                 expectThat { assertEquals(POSTS, it.posts) },
@@ -92,7 +94,7 @@ class HomeViewModelTest :
         coEvery { repository.refresh() } returnsWithDelay ApiResult.Failure(ApiError.timeout())
 
         runVMTest(
-            vmProducer = { HomeViewModel(repository) },
+            vmProducer = { HomeViewModel(GetPostsUseCase(repository), RefreshPostsUseCase(repository)) },
             intents = flowOf(HomeIntent.Load),
             expectedStates = listOf(
                 expectThat {
@@ -118,7 +120,7 @@ class HomeViewModelTest :
         coEvery { repository.refresh() } returnsWithDelay ApiResult.Success(Unit)
 
         runVMTest(
-            vmProducer = { HomeViewModel(repository) },
+            vmProducer = { HomeViewModel(GetPostsUseCase(repository), RefreshPostsUseCase(repository)) },
             intents = flowOf(HomeIntent.Refresh),
             expectedStates = listOf(
                 expectThat { assertEquals(POSTS, it.posts) },

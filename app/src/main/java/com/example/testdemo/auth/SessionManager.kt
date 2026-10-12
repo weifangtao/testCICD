@@ -44,6 +44,19 @@ class SessionManager(
         true
     }
 
+    /**
+     * 无感刷新：更新当前会话的 Token 凭据，保持 generation 不变以继续后续业务请求。
+     */
+    suspend fun updateToken(newToken: String): Boolean = mutex.withLock {
+        val currentSession = state.value.session ?: return@withLock false
+        if (newToken.isBlank()) return@withLock false
+        val updatedUser = currentSession.user.copy(token = newToken)
+        val updatedSession = currentSession.copy(user = updatedUser)
+        storage.putString("session", encrypt(json.encodeToString(Session.serializer(), updatedSession)))
+        mutableState.value = state.value.copy(session = updatedSession)
+        true
+    }
+
     suspend fun logout(message: String? = null, expected: Long? = null) = mutex.withLock {
         if (expected != null && expected != state.value.generation) return@withLock
         storage.remove("session")

@@ -1,7 +1,8 @@
 package com.example.testdemo.feature.home
 
 import androidx.lifecycle.viewModelScope
-import com.example.testdemo.data.PostRepository
+import com.example.testdemo.domain.usecase.GetPostsUseCase
+import com.example.testdemo.domain.usecase.RefreshPostsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.example.testdemo.lib.base.mvi.AbstractMviViewModel
 import com.example.testdemo.lib.net.ApiResult
@@ -31,7 +32,8 @@ import kotlinx.coroutines.flow.stateIn
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: PostRepository,
+    private val getPostsUseCase: GetPostsUseCase,
+    private val refreshPostsUseCase: RefreshPostsUseCase,
 ) : AbstractMviViewModel<HomeIntent, HomeState, HomeEvent>() {
 
     override val viewState: StateFlow<HomeState> =
@@ -48,7 +50,7 @@ class HomeViewModel @Inject constructor(
                 .scan(HomeState()) { state, change -> change.reduce(state) },
 
             // ② 数据来源：数据库（唯一）
-            repository.observePosts(),
+            getPostsUseCase(),
         ) { state, posts ->
             state.copy(posts = posts)
         }
@@ -57,7 +59,7 @@ class HomeViewModel @Inject constructor(
 
     private fun refreshFlow(): Flow<HomePartialChange> = flow {
         emit(HomePartialChange.Refreshing)
-        when (val result = repository.refresh()) {
+        when (val result = refreshPostsUseCase()) {
             is ApiResult.Success -> emit(HomePartialChange.Refreshed)
             is ApiResult.Failure -> emit(HomePartialChange.Failed(result.error.message))
             ApiResult.Cancelled -> Unit
