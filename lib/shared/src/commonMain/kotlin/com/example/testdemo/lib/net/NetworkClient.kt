@@ -1,5 +1,9 @@
 package com.example.testdemo.lib.net
 
+import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.contentType
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
@@ -55,9 +59,9 @@ data class NetworkConfig(
  * 平台差异只在 [platformHttpEngine]（Android→OkHttp，iOS→Darwin），
  * 其余代码 Android / iOS 完全共用。
  */
-class NetworkClient(val config: NetworkConfig) {
+class NetworkClient(val config: NetworkConfig, engine: HttpClientEngine = platformHttpEngine().create()) {
 
-    val http: HttpClient = HttpClient(platformHttpEngine()) {
+    val http: HttpClient = HttpClient(engine) {
         // 不抛异常，失败统一由 ApiResult 表达
         expectSuccess = false
 
@@ -65,6 +69,7 @@ class NetworkClient(val config: NetworkConfig) {
             json(
                 Json {
                     ignoreUnknownKeys = true
+                    encodeDefaults = true
                     isLenient = true
                     explicitNulls = false
                 }
@@ -141,4 +146,27 @@ suspend inline fun <reified T> HttpResponse.toApiResult(): ApiResult<T> {
         return ApiResult.Failure(ErrorMapper.fromHttp(status.value, text))
     }
     return ApiResult.Success(body<T>())
+}
+
+/** JSON POST，保留协程取消语义。 */
+suspend inline fun <reified B : Any, reified T> NetworkClient.postResult(
+    path: String, body: B,
+): ApiResult<T> = try {
+    http.post(url(path)) {
+        contentType(ContentType.Application.Json)
+        setBody(body)
+    }.toApiResult<T>()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    ApiResult.Failure(ErrorMapper.fromThrowable(e))
+}
+
+fun <T> ApiResult<ApiEnvelope<T>>.unwrapEnvelope(): ApiResult<T> = when (this) {
+    is ApiResult.Success -> when {
+        !data.result -> ApiResult.Failure(ErrorMapper.fromEnvelope(data))
+        else -> data.data?.let { ApiResult.Success(it) } ?: ApiResult.Failure(ApiError.emptyBody())
+    }
+    is ApiResult.Failure -> this
+    ApiResult.Cancelled -> ApiResult.Cancelled
 }

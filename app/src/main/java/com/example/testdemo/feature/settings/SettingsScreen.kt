@@ -27,7 +27,8 @@ import com.example.testdemo.lib.config.AppEnvironment
 import com.example.testdemo.lib.base.ui.AppTitleBar
 import com.example.testdemo.lib.config.AppEnvironmentConfigHolder
 import com.example.testdemo.lib.log.AppLogger
-import com.example.testdemo.lib.storage.AppStorage
+import com.example.testdemo.AppApplication
+import com.example.testdemo.BuildConfig
 import kotlinx.coroutines.launch
 
 private const val KEY_LAST_CHECK = "last_check"
@@ -35,15 +36,19 @@ private const val KEY_LAST_CHECK = "last_check"
 /** 演示环境切换 + 存储读写。 */
 @Composable
 fun SettingsScreen(
-    storage: AppStorage,
+    app: AppApplication,
     onBack: () -> Unit,
     onOpenLab: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val storage = remember(app.scopeKey) { app.storage }
+    var busy by remember { mutableStateOf(false) }
+    var actionError by remember { mutableStateOf<String?>(null) }
     val environment by AppEnvironmentConfigHolder.environment.collectAsStateWithLifecycle()
+    val sessionState by app.sessions.state.collectAsStateWithLifecycle()
     var storedValue by remember { mutableStateOf("读取中…") }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(storage) {
         // lib:storage —— 订阅式读取：写入后自动刷新，不用手动再查一次
         storage.observeString(KEY_LAST_CHECK).collect { storedValue = it ?: "未写入" }
     }
@@ -63,19 +68,40 @@ fun SettingsScreen(
         Text("当前环境：${environment.key}", style = MaterialTheme.typography.titleMedium)
         Text("Base URL：${environment.baseUrl}", style = MaterialTheme.typography.bodySmall)
         Text(
-            "HTTP 日志：${if (environment.enableHttpLogs) "开" else "关"}",
+            "HTTP 日志：${if (BuildConfig.DEBUG && environment.enableHttpLogs) "开" else "关"}",
             style = MaterialTheme.typography.bodySmall,
         )
 
-        Text("切换环境（下一次请求生效）", style = MaterialTheme.typography.titleSmall)
+        Text("切换环境后需重新登录", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AppEnvironment.entries.forEach { target ->
                 OutlinedButton(
-                    onClick = { AppEnvironmentConfigHolder.switchTo(target) },
-                    enabled = target != environment,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            try { app.sessions.switchEnvironment(target) }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (_: Exception) { actionError = "切换失败，请重试" }
+                            finally { busy = false }
+                        }
+                    },
+                    enabled = BuildConfig.DEBUG && !busy && target != environment,
                 ) { Text(target.key) }
             }
         }
+
+        Text("账号：${sessionState.session?.user?.userCode.orEmpty()}")
+        sessionState.session?.user?.houseName?.let { Text("仓库：$it") }
+        OutlinedButton(onClick = {
+            busy = true
+            scope.launch {
+                try { app.sessions.logout() }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { actionError = "退出失败，请重试" }
+                finally { busy = false }
+            }
+        }, enabled = !busy) { Text("退出登录") }
+        actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         Text("存储值：$storedValue", style = MaterialTheme.typography.bodySmall)
         Button(

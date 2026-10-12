@@ -42,7 +42,7 @@ ci/
 2. 修改 `ci/project-config.groovy`：
    - `git.url`、`git.defaultBranch`、`git.credentials`；
    - `jenkins.androidSdk`、可选的 `jenkins.javaHome`；
-   - `gradle.module`、`gradle.profiles.*.checkTask` 和 `packageTask`；
+   - `gradle.module`、`gradle.profiles.*.qualityTask` 和 `packageTask`；
    - 需要发布时再填写各环境的蒲公英 App Key 和 Credential ID。
 3. 在 Jenkins 创建 **Pipeline script from SCM** Job：
    - Repository URL：项目 Git 地址；
@@ -50,7 +50,7 @@ ci/
    - Script 分支：项目默认分支。
 4. 首次手动构建确认配置，之后由 SCM 轮询自动检查。
 
-自动触发只执行 `checkTask`，不打包、不上传蒲公英、不发送飞书；手动构建才执行
+自动触发只执行 `qualityTask`，不打包、不上传蒲公英、不发送飞书；手动构建才执行
 `packageTask`，并根据参数决定是否发布。
 
 ## 5. Jenkins Credentials
@@ -77,7 +77,7 @@ Credential ID。
 - `SEND_FEISHU_NOTICE`：是否发送飞书，默认关闭；
 - `UPDATE_DESCRIPTION`：蒲公英更新说明。
 
-验收标准：自动构建日志中出现实际 Java 版本和 `checkTask`，且没有打包、蒲公英、飞书
+验收标准：自动构建日志中出现实际 Java 版本和 `qualityTask`，且没有打包、蒲公英、飞书
 步骤；手动构建能生成 APK，打开发布参数后才执行对应发布步骤。
 
 ## 7. Java 环境规则
@@ -109,6 +109,13 @@ cd StockWms
 ## 9. 常见问题
 
 - `JAVA_HOME ... invalid directory`：清空 `jenkins.javaHome`，或填写节点上真实存在的路径。
-- 找不到 `checkTask`：检查 profile 名称和模块前缀，例如 `:app:compileDebugKotlin`。
+- 找不到 `qualityTask`：检查 profile 名称和模块前缀，例如 `test :app:lintStagingDebug`。
 - 自动构建上传/发通知：确认 Job 使用最新 `ci/Jenkinsfile`，并区分 SCM 自动触发和手动构建。
 - 凭据报错：检查 Jenkins Credentials 的 ID，不要把密码或 Token 写入配置文件。
+
+## 模板生成验证与 WMS 配置
+
+`bash ci/verify-template.sh --build` 会在临时目录生成项目、验证包名/schema/配置排除规则，然后编译并运行生成项目单测。节点需安装 bash、rsync、rg、Perl、Python 3、JDK 17+ 并设置 ANDROID_HOME。
+
+WMS 兼容参数通过 Jenkins Secret text 凭据注入 `WMS_AES_KEY` 和 `WMS_AES_IV`（在 `ci/project-config.groovy` 的 `wmsAuth` 中填写两个 Credential ID）。流水线会将它们传给 Gradle，缺失时质量检查仍可运行；需要登录的发布包必须配置后再打包。参数不写入 Git、构建说明或日志。
+签名、蒲公英与飞书凭据仍按项目实际配置，不能将本地构建通过当成 Jenkins 发布成功。

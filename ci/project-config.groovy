@@ -45,6 +45,11 @@ return [
         baseName : '1.0.0',
         startCode: 100
     ],
+    // Jenkins Secret text credential IDs; never put the AES values in this file.
+    wmsAuth: [
+        keyCredential: '',
+        ivCredential : ''
+    ],
     // Jenkins Credentials ID；正式 prod 发布必须全部填写
     signing: [
         keystoreFile : '',

@@ -26,17 +26,17 @@ enum class AppEnvironment(
 ) {
     DEV(
         key = "dev",
-        baseUrl = "https://jsonplaceholder.typicode.com/",
+        baseUrl = "https://wms-test.haoqianyi.com/k3_wms/",
         enableHttpLogs = true,
     ),
     TEST(
         key = "test",
-        baseUrl = "https://jsonplaceholder.typicode.com/",
+        baseUrl = "https://wms-test.haoqianyi.com/k3_wms/",
         enableHttpLogs = true,
     ),
     PROD(
         key = "prod",
-        baseUrl = "https://jsonplaceholder.typicode.com/",
+        baseUrl = "https://wms.haoqianyi.com/k3_wms/",
         enableHttpLogs = false,
     ),
     ;

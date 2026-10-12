@@ -16,28 +16,19 @@
 
 ## 模块结构
 
-只有 **2 个模块**：业务壳 + 一个通用能力库。
+当前共 **3 个模块**：
 
-```
+```text
 testDemo/
-├── app/                业务壳工程（唯一 application 模块）
-│   └── feature/        home / detail / settings / lab
-├── lib/core/           通用能力（所有基建都在这里）
-│   ├── base/           MVI 基座 + Activity/Fragment 基类 + TitleBar + UiState + 防抖
-│   ├── net/            网络层：NetworkClient / ApiResult / ApiError / ErrorMapper
-│   ├── image/          图片能力抽象（外观模式，默认 Coil）
-│   ├── storage/        Key-Value 存储（DataStore）
-│   ├── db/             Room 通用转换器 + 数据库构建入口
-│   ├── log/            日志门面 + 崩溃兜底
-│   ├── config/         环境与 BaseUrl 配置
-│   ├── router/         路由契约（纯 Kotlin：AppRoute + Navigator）
-│   ├── navigation/     导航实现（Navigation Compose）
-│   └── testFixtures/   MVI 单测基类（不会进 APK）
-└── ci/                 Jenkinsfile / 打包 / 一键初始化
+├── app/          Android 业务壳：Compose/MVI、WMS 登录、Room 业务数据库
+├── lib/core/     Android 实现：UI 基类、DataStore、Room 构建、日志、图片、导航
+├── lib/shared/   KMP 契约、Ktor 网络、错误模型、环境与路由定义
+├── ci/           Jenkins 流水线、初始化与模板验证脚本
+└── docs/         使用指南、登录接入说明、OKR 验收清单
 ```
 
-> 包名按能力划分（`lib.base` / `lib.net` / …），**模块只有一个**。
-> 需要真正独立交付或可选依赖时再拆 —— 拆比合容易。
+WMS 登录与 Android Keystore 在 `app/auth`；共享库保持通用，不包含 WMS 加密配置。
+iOS 当前仅提供共享层及 Darwin 网络引擎，尚未实现 iOS 登录页面与持久化。
 
 ## 通用能力一览
 
@@ -94,7 +85,7 @@ testDemo/
 | `staging` | `test` | `.test` |
 | `prod` | `prod` | 无 |
 
-> **接口地址在代码里**：`lib/core/config/AppEnvironment.kt`，改地址不用动 Gradle。
+> **接口地址在代码里**：`lib/shared/src/commonMain/kotlin/com/example/testdemo/lib/config/AppEnvironment.kt`，改地址不用动 Gradle。
 > Gradle 只提供 `APP_ENV` 标识（flavor 名与环境 key 解耦）。
 >
 > ⚠️ AGP 保留 `test*` 开头的 flavor 名，所以测试环境 flavor 叫 `staging`。
@@ -131,14 +122,7 @@ UI 订阅 Room 的 `Flow`，网络只负责刷新写库。离线可用、切页�
 ./gradlew test
 ```
 
-当前覆盖：
-
-| 模块 | 用例数 | 内容 |
-|---|---|---|
-| `lib:core` | 9 | 扫描枪防抖 6 + 路由表 3 |
-| `lib:shared`（commonTest）| 11 | ErrorMapper 七类错误映射 |
-| `app` | 8 | `HomeViewModel` 4 + `DetailViewModel` 3 + 冒烟 1 |
-| **合计** | **28** | `./gradlew test` 一条命令覆盖 |
+测试覆盖网络错误映射、MVI 页面状态、扫描防抖、WMS 请求协议、密码加密兼容、会话恢复/退出/过期及环境隔离。实际数量以本次 Gradle XML/HTML 报告为准。
 
 ViewModel 单测写法见 `app/src/test/.../HomeViewModelTest.kt`：继承 `BaseMviViewModelTest`，
 声明意图流与期望状态/事件序列即可，不用手写订阅与断言样板。
@@ -173,3 +157,13 @@ testImplementation(testFixtures(project(":lib:core")))
 ```
 
 脚本会复制工程、替换包名、生成 CI 配置并初始化 Git，不会自动提交或推送。
+
+## 真实登录与验收
+
+启动先进入 WMS 账号密码登录页。登录成功后进入原能力示例首页，设置页可退出登录；仅 Debug 包允许切换环境。常规员工登录使用 `employmentType=false`，临时工与仓库选择流程尚未接入。
+
+本地复制 `wms-auth.properties.example` 为 `wms-auth.properties`，从接口负责人获取兼容配置；CI 使用 `WMS_AES_KEY` / `WMS_AES_IV` 凭据环境变量。文件已忽略，初始化脚本不会复制。配置为空仍能构建，登录时会提示配置缺失。
+
+- [登录接入与隔离说明](docs/登录接入与隔离.md)
+- [OKR 验收与发布清单](docs/OKR验收与发布.md)
+- `bash ci/verify-template.sh` 验证初始化；加 `--build` 验证生成项目的 APK 和单测，需要 JDK 17+、Android SDK 与依赖下载环境。

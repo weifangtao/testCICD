@@ -25,3 +25,6 @@ keystore.properties
 **/metadata/
 *.klib
 
+
+# WMS 接口兼容配置
+wms-auth.properties

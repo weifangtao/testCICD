@@ -19,7 +19,7 @@ import kotlinx.coroutines.sync.withLock
  * - [observePosts]：UI 订阅它拿数据
  * - [refresh]：只负责「拉网络 → 写库」
  *
- * 网络用 Ktor，所以这段逻辑 iOS 侧可以原样复用。
+ * 此实现依赖 Android Room；iOS 复用共享网络契约时需提供自己的持久化实现。
  */
 class PostRepository(
     private val networkProvider: () -> NetworkClient,

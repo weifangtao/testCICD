@@ -1,0 +1,3 @@
+# 由接口负责人提供；兼容 k3_wms_android AESUtil.encrypt(String)
+WMS_AES_KEY=
+WMS_AES_IV=

@@ -2,7 +2,8 @@ package com.example.testdemo.feature.settings
 
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
-import com.example.testdemo.di.rememberAppStorage
+import androidx.compose.ui.platform.LocalContext
+import com.example.testdemo.AppApplication
 import com.example.testdemo.lib.navigation.FeatureGraph
 import com.example.testdemo.lib.navigation.LocalNavigator
 import com.example.testdemo.lib.router.LabRoute
@@ -18,7 +19,7 @@ private val SettingsGraph = FeatureGraph { builder ->
         val navigator = LocalNavigator.current
 
         SettingsScreen(
-            storage = rememberAppStorage(),
+            app = LocalContext.current.applicationContext as AppApplication,
             onBack = { navigator.navigateUp() },
             onOpenLab = { navigator.navigate(LabRoute) },
         )

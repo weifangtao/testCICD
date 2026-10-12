@@ -23,7 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun postDao(): PostDao
 
     companion object {
-        fun create(context: Context): AppDatabase =
-            buildDatabase<AppDatabase>(context, "app.db")
+        fun create(context: Context, name: String = "app.db"): AppDatabase =
+            buildDatabase<AppDatabase>(context, name)
     }
 }

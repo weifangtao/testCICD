@@ -27,19 +27,16 @@ object DataModule {
         context as AppApplication
 
     @Provides
-    @Singleton
     fun provideStorage(app: AppApplication): AppStorage = app.storage
 
     @Provides
-    @Singleton
     fun providePostDao(app: AppApplication): PostDao = app.database.postDao()
 
     @Provides
-    @Singleton
     fun providePostRepository(app: AppApplication): PostRepository =
         PostRepository(
-            // 用 lambda 每次取，设置页切换环境后立即生效
+            // 公开客户端与固定会话 DAO 配套，避免跨账号写入
             networkProvider = { app.network },
-            postDao = { app.database.postDao() },
+            postDao = app.database.postDao().let { dao -> { dao } },
         )
 }

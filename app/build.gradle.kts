@@ -43,12 +43,20 @@ if (requireReleaseSigning && !hasReleaseKeystore) {
     error("Release signing is required, but RELEASE_STORE_FILE/PASSWORD/ALIAS/KEY_PASSWORD are incomplete")
 }
 
+val wmsProperties = Properties().apply {
+    rootProject.file("wms-auth.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun wmsValue(key: String): String = (wmsProperties.getProperty(key) ?: System.getenv(key).orEmpty())
+    .let { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" }
+
 android {
     namespace = "com.example.testdemo"
     compileSdk { version = release(36) { minorApiLevel = 1 } }
 
     defaultConfig {
         applicationId = "com.example.testdemo"
+        buildConfigField("String", "WMS_AES_KEY", wmsValue("WMS_AES_KEY"))
+        buildConfigField("String", "WMS_AES_IV", wmsValue("WMS_AES_IV"))
         minSdk = 24
         targetSdk = 36
         versionCode = buildValue("VERSION_CODE", "1").toInt()
@@ -74,7 +82,7 @@ android {
 
     flavorDimensions += "environment"
     productFlavors {
-        // 接口地址不在这里配 —— 见 lib/core/config/AppEnvironment.kt
+        // 接口地址不在这里配 —— 见 lib/shared/src/commonMain/.../config/AppEnvironment.kt
         create("dev") {
             dimension = "environment"; applicationIdSuffix = ".dev"
             buildConfigField("String", "APP_ENV", "\"dev\"")
@@ -154,6 +162,7 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
 
     testImplementation(libs.junit)
+    testImplementation("io.ktor:ktor-client-mock:3.2.3")
     testImplementation(testFixtures(project(":lib:core")))
 
     androidTestImplementation(platform(libs.androidx.compose.bom))

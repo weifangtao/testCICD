@@ -64,6 +64,26 @@ def withSigningCredentials(Map config, boolean required, Closure body) {
     }
 }
 
+/** Inject the WMS login AES compatibility parameters from Jenkins Secret text credentials. */
+def withWmsAuth(Map config, Closure body) {
+    def auth = config.wmsAuth ?: [:]
+    def keyCredential = auth.keyCredential?.trim()
+    def ivCredential = auth.ivCredential?.trim()
+    if (!keyCredential && !ivCredential) {
+        echo 'WMS AES credentials are not configured; login integration tests can still run with test vectors.'
+        return body()
+    }
+    if (!keyCredential || !ivCredential) {
+        error 'WMS AES credentials are incomplete; configure both wmsAuth.keyCredential and wmsAuth.ivCredential.'
+    }
+    withCredentials([
+            string(credentialsId: keyCredential, variable: 'WMS_AES_KEY'),
+            string(credentialsId: ivCredential, variable: 'WMS_AES_IV')
+    ]) {
+        body()
+    }
+}
+
 def selectedBuildProfile(Map config, String requested) {
     def profiles = config.gradle.profiles ?: [:]
     def value = requested ?: config.gradle.defaultProfile ?: 'test'
@@ -173,11 +193,13 @@ pipeline {
                     def version = [name: env.VERSION_NAME, code: env.VERSION_CODE]
                     def requireSigning = !isScmCheck && (buildProfile.values.requireSigning ?: false)
                     withAndroidEnv(appConfig) {
-                        withSigningCredentials(appConfig, requireSigning) {
-                            withEnv(["REQUIRE_RELEASE_SIGNING=${requireSigning}"]) {
-                                sh "./gradlew ${gradleTasks} " +
-                                   "-PVERSION_NAME=${version.name} -PVERSION_CODE=${version.code} " +
-                                   "--build-cache --parallel --stacktrace"
+                        withWmsAuth(appConfig) {
+                            withSigningCredentials(appConfig, requireSigning) {
+                                withEnv(["REQUIRE_RELEASE_SIGNING=${requireSigning}"]) {
+                                    sh "./gradlew ${gradleTasks} " +
+                                       "-PVERSION_NAME=${version.name} -PVERSION_CODE=${version.code} " +
+                                       "--build-cache --parallel --stacktrace"
+                                }
                             }
                         }
                     }
