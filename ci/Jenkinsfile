@@ -25,6 +25,31 @@ def withAndroidEnv(Map config, Closure body) {
 def appConfig
 
 /**
+ * 归一化分支名。
+ *
+ * Git Parameter 下拉返回 `origin/xxx`，但以下写法都可能出现：
+ * - 手输 `xxx`
+ * - 上游传参 `refs/heads/xxx`
+ * - 下拉 + 手输混用 `refs/remotes/origin/xxx`
+ * - 复制粘贴带首尾空格
+ *
+ * 统一收敛成**裸分支名**，避免 checkout 到错误 ref 或直接失败。
+ */
+def normalizeBranch(String raw, String fallback) {
+    def value = (raw ?: '').trim()
+    if (!value) {
+        value = (fallback ?: '').trim()
+    }
+    value = value.replaceFirst('^refs/heads/', '')
+    value = value.replaceFirst('^refs/remotes/', '')
+    value = value.replaceFirst('^origin/', '')
+    if (!value) {
+        error 'BRANCH 为空：请在构建参数里选择分支，或配置 ci/project-config.groovy 的 git.defaultBranch。'
+    }
+    return value
+}
+
+/**
  * 计算版本号。
  * 优先级：构建参数 > project-config.version 配置 + BUILD_NUMBER
  */
@@ -115,10 +140,24 @@ pipeline {
     }
 
     parameters {
-        string(name: 'BUILD_ENV', defaultValue: 'test', description: '构建 profile 名称；可用值由 ci/project-config.groovy 的 gradle.profiles 配置')
+        // 打包环境：用 choice 而不是 string —— string 在界面上是**文本框**，
+        // 只能手输，容易拼错成不存在的 profile 名。
+        // choice 的第一个值即默认值。新增环境时同步改这里和 gradle.profiles。
+        choice(name: 'BUILD_ENV', choices: ['test', 'prod'], description: '打包环境（下拉选择）；对应 ci/project-config.groovy 的 gradle.profiles key')
         booleanParam(name: 'UPLOAD_PGYER', defaultValue: false, description: '是否上传蒲公英')
         string(name: 'UPDATE_DESCRIPTION', defaultValue: '', description: '蒲公英更新说明')
         booleanParam(name: 'SEND_FEISHU_NOTICE', defaultValue: false, description: '构建成功后发送飞书群通知')
+        // ══════════════════════════════════════════════════════════════
+        // BRANCH 下拉框（依赖 Jenkins 插件「Git Parameter」）
+        //
+        // ⚠️ 参数名必须与插件版本一致。插件**没有 credentialId 字段**，
+        //    写了会直接编译失败：
+        //      Invalid parameter "credentialId", did you mean "defaultValue"?
+        //
+        // useRepository 是「仓库选择正则」：Job 的 SCM 定义多个仓库时，用它
+        // 指定用哪个取分支；**比较对象是 SCM 里的 Repository URL**。
+        // 留空 = 用第一个仓库。凭据由 Job 的 SCM 自动提供，这里不用配。
+        // ══════════════════════════════════════════════════════════════
         gitParameter(
                 name: 'BRANCH',
                 type: 'PT_BRANCH',
@@ -126,7 +165,8 @@ pipeline {
                 branchFilter: 'origin/(.*)',
                 selectedValue: 'DEFAULT',
                 sortMode: 'DESCENDING_SMART',
-                description: '请选择打包分支'
+                useRepository: '.*',
+                description: '打包分支（下拉选择，来自 Git 仓库）'
         )
     }
 
@@ -138,8 +178,17 @@ pipeline {
                     // SCM. The second checkout honors the selected build branch.
                     checkout scm
                     appConfig = load 'ci/project-config.groovy'
-                    def selectedBranch = params.BRANCH ?: (appConfig.git.defaultBranch ?: 'origin/main')
-                    def branchName = selectedBranch.replaceFirst('^origin/', '')
+                    def branchName = normalizeBranch(params.BRANCH, appConfig.git.defaultBranch)
+                    echo "Resolved branch: ${branchName} (BRANCH param: ${params.BRANCH ?: '(empty)'})"
+                    // 提示两种仓库来源：
+                    //   - BRANCH 下拉框：取自 Job SCM 配置的仓库（凭据也来自那里）
+                    //   - 实际 checkout：用 project-config.git.url
+                    // 两者不同步时容易误判「下拉框里的分支不是我要构建的仓库」。
+                    def jobScmUrl = scm.userRemoteConfigs?.find { it.url }?.url
+                    if (jobScmUrl && jobScmUrl != appConfig.git.url) {
+                        echo "ℹ️ Job SCM (${jobScmUrl}) 与 project-config.git.url (${appConfig.git.url}) 不同；" +
+                             "BRANCH 下拉框取自 Job SCM，实际 checkout 用 project-config 的地址。"
+                    }
                     deleteDir()
                     def remote = [url: appConfig.git.url]
                     if (appConfig.git.credentials?.trim()) {
