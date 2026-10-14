@@ -11,6 +11,7 @@ import com.example.testdemo.lib.net.NetworkClient
 import com.example.testdemo.lib.net.NetworkConfig
 import com.example.testdemo.lib.storage.AppStorage
 import com.example.testdemo.lib.storage.createAppStorage
+import com.example.testdemo.flutter.AppFlutterBridgeInitializer
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
 
@@ -47,6 +48,7 @@ class AppApplication : Application() {
         val cipher = SessionCipher()
         sessions = SessionManager(installationStorage, cipher::encrypt, cipher::decrypt)
         wms = WmsGateway(sessions)
+        AppFlutterBridgeInitializer.init(this)
         applicationScope.launch { sessions.restore() }
     }
 }
